@@ -1,0 +1,8 @@
+# catalog_dashboard/settings.yaml
+baserow:
+  base_url: http://129.159.18.115:49161
+  api_token: PfMJRl1I6CVwHPPLQ578vHmxvCR6fVMB
+
+google_sheet_settings:
+  spreadsheet_id: 1u14J32olXDldR2UMfkt-CwGkJxkbna4-YYnvtSuJrbA
+  worksheet_name: CatalogConfig # We will create this new tab

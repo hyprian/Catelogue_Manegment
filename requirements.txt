@@ -1,0 +1,7 @@
+# catalog_dashboard/requirements.txt
+streamlit
+pandas
+requests
+PyYAML
+gspread
+google-auth-oauthlib
