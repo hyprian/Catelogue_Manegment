@@ -5,4 +5,5 @@ baserow:
 
 google_sheet_settings:
   spreadsheet_id: 1u14J32olXDldR2UMfkt-CwGkJxkbna4-YYnvtSuJrbA
-  worksheet_name: CatalogConfig # We will create this new tab
+  worksheet_name: CatalogConfig # 
+  chatbot_worksheet_name: ChatbotTables

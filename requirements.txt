@@ -5,3 +5,4 @@ requests
 PyYAML
 gspread
 google-auth-oauthlib
+google-generativeai 
