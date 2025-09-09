@@ -4,3 +4,4 @@ requests
 PyYAML
 gspread
 google-auth-oauthlib
+webdriver-manager

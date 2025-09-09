@@ -30,36 +30,20 @@ LOG_FILE = os.path.join(LOG_DIR, 'enrichment_run.json')
 # --- Custom JSON Logger Setup ---
 class JsonFormatter(logging.Formatter):
     def format(self, record):
-        log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "message": record.getMessage()
-        }
-        if hasattr(record, 'extra_data'):
-            log_record.update(record.extra_data)
+        log_record = {"timestamp": self.formatTime(record, self.datefmt), "level": record.levelname, "message": record.getMessage()}
+        if hasattr(record, 'extra_data'): log_record.update(record.extra_data)
         return json.dumps(log_record)
 
 def setup_logging():
     os.makedirs(LOG_DIR, exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    # Prevent duplicate logs if already configured
-    if logger.hasHandlers():
-        logger.handlers.clear()
-    
-    # File handler for JSON logs
-    file_handler = logging.FileHandler(LOG_FILE)
-    file_handler.setFormatter(JsonFormatter())
-    logger.addHandler(file_handler)
-    
-    # Console handler for human-readable logs
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(console_handler)
+    if logger.hasHandlers(): logger.handlers.clear()
+    file_handler = logging.FileHandler(LOG_FILE); file_handler.setFormatter(JsonFormatter()); logger.addHandler(file_handler)
+    console_handler = logging.StreamHandler(); console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')); logger.addHandler(console_handler)
 
-# --- 2. SELENIUM WEBDRIVER SETUP (Your proven configuration) ---
+# --- 2. SELENIUM WEBDRIVER SETUP ---
 def setup_driver():
-    # ... (This function remains exactly the same as your working test script) ...
     logging.info("Setting up headless Chrome driver...")
     options = Options()
     options.add_argument("--headless=new")
@@ -81,9 +65,8 @@ def setup_driver():
         logging.error("!!! DRIVER SETUP FAILED", extra={'extra_data': {'error': str(e)}})
         return None
 
-# --- 3. DATA SCRAPING FUNCTION (Full version) ---
+# --- 3. DATA SCRAPING FUNCTION ---
 def scrape_product_page(driver, asin):
-    # ... (This function remains the same, scraping all fields) ...
     url = BASE_URL + asin
     driver.get(url)
     wait = WebDriverWait(driver, 15)
@@ -108,12 +91,11 @@ def scrape_product_page(driver, asin):
     try:
         thumbs = driver.find_elements(By.CSS_SELECTOR, 'li.thumbnail img')
         urls = {t.get_attribute('src').split('._')[0] + '._AC_SL1500_.jpg' for t in thumbs}
-        scraped_data['Image URLs'] = ', '.join(list(urls))
+        scraped_data['Image URLs'] = ', '.join(list(urls)) if urls else None
     except Exception: scraped_data['Image URLs'] = None
     try: scraped_data['Product Description'] = driver.find_element(By.ID, 'productDescription').text.strip()
     except Exception: scraped_data['Product Description'] = None
-    # This Status is from the Amazon page, not our internal status
-    scraped_data['Status'] = 'Active' # Assume active if page is reachable
+    scraped_data['Status'] = 'Active'
     return scraped_data
 
 # --- 4. MAIN EXECUTION LOGIC ---
@@ -124,15 +106,13 @@ def main():
     baserow_config = APP_CONFIG.get('baserow', {})
     table_id = baserow_config.get('catalogue_table_id')
     if not table_id:
-        logging.error("'catalogue_table_id' not found in configuration.")
-        return
+        logging.error("'catalogue_table_id' not found in configuration."); return
 
     connector = BaserowConnector(api_token=baserow_config['api_token'], base_url=baserow_config['base_url'])
     catalogue_df = connector.get_table_as_dataframe(table_id)
     
     if catalogue_df.empty:
-        logging.warning("Catalogue table is empty. No ASINs to process.")
-        return
+        logging.warning("Catalogue table is empty. No ASINs to process."); return
 
     asins_to_scrape = catalogue_df[catalogue_df['Marketplace ASIN/Product ID'].notna()].copy()
     logging.info(f"Found {len(asins_to_scrape)} listings with ASINs to process.")
@@ -142,21 +122,19 @@ def main():
 
     updates_to_send = []
     failed_asins = []
-    processed_count = 0
-
+    
     # --- First Pass Scraping ---
-    for index, row in asins_to_scrape.iterrows():
-        baserow_id = row['id']
-        asin = row['Marketplace ASIN/Product ID']
-        processed_count += 1
-        logging.info(f"Scraping (Pass 1) [{processed_count}/{len(asins_to_scrape)}] for ASIN: {asin}")
+    for i, row in asins_to_scrape.iterrows():
+        baserow_id, asin = row['id'], row['Marketplace ASIN/Product ID']
+        logging.info(f"Scraping (Pass 1) [{i+1}/{len(asins_to_scrape)}] for ASIN: {asin}")
         try:
             product_data = scrape_product_page(driver, asin)
             if product_data.get('Title'):
                 product_data['id'] = baserow_id
+                product_data['Enrichment Status'] = 'Success'
                 updates_to_send.append(product_data)
             else: raise ValueError("Scrape returned no title.")
-            time.sleep(random.uniform(2.5, 5.5))
+            time.sleep(random.uniform(2, 4))
         except Exception as e:
             logging.warning(f"Could not scrape ASIN {asin} on first pass.", extra={'extra_data': {'asin': asin, 'error': str(e)}})
             failed_asins.append({'id': baserow_id, 'ASIN': asin})
@@ -165,9 +143,20 @@ def main():
     # --- Retry Pass for Failed ASINs ---
     if failed_asins:
         logging.info(f"--- Retrying {len(failed_asins)} failed ASINs ---")
-        for item in failed_asins:
-            # ... retry logic ...
-            pass # The logic for retry is similar and can be added here if needed
+        for i, item in enumerate(failed_asins):
+            baserow_id, asin = item['id'], item['ASIN']
+            logging.info(f"Scraping (Pass 2) [{i+1}/{len(failed_asins)}] for ASIN: {asin}")
+            try:
+                product_data = scrape_product_page(driver, asin)
+                if product_data.get('Title'):
+                    product_data['id'] = baserow_id
+                    product_data['Enrichment Status'] = 'Success (on retry)'
+                    updates_to_send.append(product_data)
+                else: raise ValueError("Retry scrape returned no title.")
+                time.sleep(random.uniform(2, 4))
+            except Exception as e:
+                logging.error(f"Failed to scrape ASIN {asin} on second pass.", extra={'extra_data': {'asin': asin, 'error': str(e)}})
+                updates_to_send.append({'id': baserow_id, 'Enrichment Status': 'Scrape Failed'})
 
     logging.info("✅ Scraping process finished. Closing the browser.")
     driver.quit()
@@ -176,25 +165,16 @@ def main():
     if updates_to_send:
         final_payload = []
         for update in updates_to_send:
-            payload_item = {
-                'id': update['id'],
-                'Enrichment Status': 'Success',
-                'Last Enriched At': datetime.now().isoformat()
-            }
-            # --- DATA MAPPING LOGIC ---
-            if update.get('Status'): payload_item['Listing Status'] = update['Status']
-            if update.get('Title'): payload_item['Title'] = update['Title']
-            if update.get('Brand'): payload_item['Brand'] = update['Brand']
-            if update.get('Price'): payload_item['Price'] = update['Price']
-            if update.get('Rating'): payload_item['Rating'] = update['Rating']
-            if update.get('Review Count'): payload_item['Review Count'] = update['Review Count']
-            if update.get('Bullet Points'): payload_item['Bullet Points'] = update['Bullet Points']
+            payload_item = {'id': update['id'], 'Enrichment Status': update.get('Enrichment Status'), 'Last Enriched At': datetime.now().isoformat()}
+            
+            # This mapping ensures we only send data for columns that were successfully scraped
+            key_mapping = {'Status': 'Listing Status', 'Title': 'Title', 'Brand': 'Brand', 'Price': 'Price', 'Rating': 'Rating', 'Review Count': 'Review Count', 'Bullet Points': 'Bullet Points', 'Product Description': 'Product Description'}
+            for scraped_key, baserow_key in key_mapping.items():
+                if update.get(scraped_key): payload_item[baserow_key] = update[scraped_key]
+            
             if update.get('Image URLs'):
                 payload_item['All Image URLs'] = update['Image URLs']
-                # Get the first image for the 'Product Image 1' column
-                first_image = update['Image URLs'].split(',')[0].strip()
-                payload_item['Product Image 1'] = first_image
-            if update.get('Product Description'): payload_item['Product Description'] = update['Product Description']
+                payload_item['Product Image 1'] = update['Image URLs'].split(',')[0].strip()
             
             final_payload.append(payload_item)
         
@@ -207,8 +187,8 @@ def main():
         logging.info("No new data to update in Baserow.")
 
     end_time = datetime.now()
-    logging.info(f"Enrichment process finished. Total runtime: {end_time - start_time}", extra={'extra_data': {'duration_seconds': (end_time - start_time).total_seconds(), 'successful_updates': len(updates_to_send)}})
-
+    duration = (end_time - start_time).total_seconds()
+    logging.info(f"Enrichment process finished. Total runtime: {duration:.2f} seconds", extra={'extra_data': {'duration_seconds': duration, 'successful_updates': len(updates_to_send)}})
 
 if __name__ == "__main__":
     setup_logging()

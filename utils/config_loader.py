@@ -6,20 +6,63 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 @st.cache_resource
 def get_gspread_client():
+    creds_dict = None
+    # --- THIS IS THE NEW LOGIC ---
     try:
+        # Try to get secrets from Streamlit (when run in the app)
         creds_dict = st.secrets["google_credentials"]
+        logging.info("Successfully loaded Google credentials from st.secrets.")
+    except Exception:
+        # Fallback for standalone scripts (like our scraper)
+        logging.info("st.secrets not available. Falling back to environment variables.")
+        try:
+            private_key = os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY", "").replace('\\n', '\n')
+            
+            # Check if the essential variables are present
+            if not all([
+                os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_TYPE"),
+                os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PROJECT_ID"),
+                private_key,
+                os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_CLIENT_EMAIL")
+            ]):
+                logging.error("One or more required Google credential environment variables are missing.")
+                return None
+
+            creds_dict = {
+                "type": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_TYPE"),
+                "project_id": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PROJECT_ID"),
+                "private_key_id": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY_ID"),
+                "private_key": private_key,
+                "client_email": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_CLIENT_EMAIL"),
+                "client_id": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_CLIENT_ID"),
+                "auth_uri": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_AUTH_URI"),
+                "token_uri": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_TOKEN_URI"),
+                "auth_provider_x509_cert_url": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_AUTH_PROVIDER_X509_CERT_URL"),
+            }
+            logging.info("Successfully loaded Google credentials from environment variables.")
+        except Exception as e:
+            logging.error(f"Failed to construct credentials from environment variables: {e}")
+            return None
+    # --- END OF NEW LOGIC ---
+
+    if not creds_dict:
+        logging.error("Could not load Google credentials from any source.")
+        return None
+
+    try:
         creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
         client = gspread.authorize(creds)
         logging.info("Successfully connected to Google Sheets API.")
         return client
     except Exception as e:
-        logging.error(f"Failed to connect to Google Sheets API: {e}")
+        logging.error(f"Failed to connect to Google Sheets API with loaded credentials: {e}")
         return None
-
+    
 def get_settings_from_gsheet(client, spreadsheet_id, worksheet_name):
     try:
         spreadsheet = client.open_by_key(spreadsheet_id)
