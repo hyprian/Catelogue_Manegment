@@ -97,7 +97,7 @@ with tab2:
 
         column_config = {
             # --- FIX 2: Adjust column width ---
-            "_selected": st.column_config.CheckboxColumn("Select", width="small", required=True),
+            "_selected": st.column_config.CheckboxColumn("Select", required=True),
             "id": None, "order": None,
             "Asin": st.column_config.TextColumn("ASIN", disabled=True),
             "Status": st.column_config.SelectboxColumn(options=["Active", "Deleted", "Uncategorized"], required=True),
