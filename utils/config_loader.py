@@ -4,7 +4,7 @@ import os
 import logging
 import gspread
 from google.oauth2.service_account import Credentials
-
+import base64
 # --- NEW: Environment-aware setup ---
 IS_STREAMLIT_APP = False
 try:
@@ -37,10 +37,16 @@ def get_gspread_client():
         # Fallback for standalone scripts (like our scraper)
         logging.info("st.secrets not available. Falling back to environment variables.")
         try:
-            private_key = os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY", "").replace('\\n', '\n')
-            if not private_key:
-                logging.error("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY env var is missing or empty.")
+            # --- THIS IS THE FIX ---
+            # 1. Read the Base64 encoded key from the new environment variable
+            private_key_b64 = os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY_B64")
+            if not private_key_b64:
+                logging.error("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_PRIVATE_KEY_B64 env var is missing.")
                 return None
+            
+            # 2. Decode the Base64 string back into the multi-line key format
+            private_key = base64.b64decode(private_key_b64).decode('utf-8')
+            # --- END OF FIX ---
 
             creds_dict = {
                 "type": os.environ.get("STREAMLIT_SECRETS_GOOGLE_CREDENTIALS_TYPE"),
