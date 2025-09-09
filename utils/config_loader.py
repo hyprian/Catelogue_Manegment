@@ -57,6 +57,11 @@ def load_app_config():
             config = yaml.safe_load(f)
     except FileNotFoundError:
         return {"error": "settings.yaml not found."}
+    
+    baserow_api_token_env = os.getenv('BASEROW_API_TOKEN')
+    if baserow_api_token_env:
+        config['baserow']['api_token'] = baserow_api_token_env
+        logging.info("Loaded Baserow API token from environment variable.")
 
     gsheet_settings = config.get("google_sheet_settings", {})
     spreadsheet_id = gsheet_settings.get("spreadsheet_id")
