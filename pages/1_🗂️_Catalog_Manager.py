@@ -19,6 +19,8 @@ def initialize_state(force_refresh=False):
         
         df, _ = load_data()
         if not df.empty:
+            df['Status'] = df['Status'].fillna('Uncategorized')
+            df['Status'] = df['Status'].apply(lambda x: 'Uncategorized' if str(x).strip() == '' else x)
             df.insert(0, "_selected", False)
             st.session_state.original_df = df.copy()
             st.session_state.editor_df = df.copy()
