@@ -154,21 +154,56 @@ with tab2:
             st.warning("You have unsaved changes from direct edits!")
             if st.button("💾 Save Direct Edits", type="primary"):
                 with st.spinner("Finding differences and saving..."):
-                    diff = pd.concat([st.session_state.original_df, edited_df]).drop_duplicates(keep=False)
-                    changed_indices = diff.index.unique()
-                    updates_to_send = []
-                    for index in changed_indices:
-                        if index in st.session_state.original_df.index and index in edited_df.index:
-                            original_row = st.session_state.original_df.loc[index]
-                            edited_row = edited_df.loc[index]
-                            update_payload = {'id': int(original_row['id'])}
-                            update_payload.update(edited_row[original_row != edited_row].to_dict())
-                            updates_to_send.append(update_payload)
+                    # --- THIS IS THE NEW, ROBUST LOGIC ---
                     
+                    # 1. Prepare the DataFrames by setting 'id' as the index.
+                    # This aligns the rows perfectly, regardless of display order.
+                    original_indexed = st.session_state.original_df.set_index('id')
+                    edited_indexed = edited_df.set_index('id')
+                    
+                    # 2. Use pandas.compare to find the exact differences.
+                    # It returns a DataFrame showing only the changed cells.
+                    try:
+                        diff = original_indexed.compare(edited_indexed)
+                    except Exception as e:
+                        st.error(f"Error comparing dataframes: {e}. This can happen if rows were added/deleted.")
+                        st.stop()
+
+                    if diff.empty:
+                        st.info("No changes to save.")
+                        st.stop()
+
+                    # 3. Construct the update payload from the diff.
+                    updates_to_send = []
+                    for row_id, changes in diff.iterrows():
+                        # The payload must start with the row's ID
+                        update_payload = {'id': int(row_id)}
+                        
+                        # Get the changed values. 'self' refers to the edited_df, 'other' to original_df.
+                        # We only care about the new values from 'self'.
+                        changed_columns = changes.dropna().xs('self', level=1)
+                        update_payload.update(changed_columns.to_dict())
+                        
+                        updates_to_send.append(update_payload)
+
+                    # --- END OF NEW LOGIC ---
+
                     baserow_config = APP_CONFIG.get('baserow', {})
-                    table_id = baserow_config.get('all_skus_table_id')
+                    # IMPORTANT: Ensure you are updating the correct table. 
+                    # The viewer loads from multiple tables, but edits should likely go to one.
+                    # Let's assume edits go to the 'all_skus_table_id' for now.
+                    # ⚠️ To be researched further: Confirm which table should be the destination for edits.
+                    table_id = baserow_config.get('all_skus_table_id') 
+                    
+                    if not table_id:
+                        st.error("Configuration error: 'all_skus_table_id' not found.")
+                        st.stop()
+
                     connector = BaserowConnector(api_token=baserow_config['api_token'], base_url=baserow_config['base_url'])
+                    
                     if connector.update_rows(table_id, updates_to_send):
                         st.success(f"Successfully updated {len(updates_to_send)} records.")
-                        initialize_state(force_refresh=True); st.rerun()
-                    else: st.error("Failed to save changes.")
+                        initialize_state(force_refresh=True)
+                        st.rerun()
+                    else:
+                        st.error("Failed to save changes.")
